@@ -10,6 +10,7 @@ import shutil
 from flask import Flask, request, jsonify, send_file, render_template
 import fitz  # PyMuPDF
 from io import BytesIO
+from PIL import Image
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
@@ -18,8 +19,11 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# 存储已上传文件的信息 {file_id: {'path': path, 'filename': filename, 'page_count': count}}
+# 存储已上传文件的信息 {file_id: {'path': path, 'filename': filename, 'page_count': count, 'type': 'pdf'|'image'}}
 uploaded_files = {}
+
+# 支持的图片格式
+ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp'}
 
 
 def cleanup_uploads():
@@ -40,7 +44,7 @@ def index():
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
-    """上传 PDF 文件"""
+    """上传 PDF 或图片文件"""
     if 'file' not in request.files:
         return jsonify({'success': False, 'error': '没有文件'}), 400
 
@@ -48,54 +52,98 @@ def upload_file():
     if file.filename == '':
         return jsonify({'success': False, 'error': '没有选择文件'}), 400
 
-    if not file.filename.lower().endswith('.pdf'):
-        return jsonify({'success': False, 'error': '只支持 PDF 文件'}), 400
+    # 获取文件扩展名
+    file_ext = os.path.splitext(file.filename.lower())[1]
+
+    # 判断文件类型
+    is_pdf = file_ext == '.pdf'
+    is_image = file_ext in ALLOWED_IMAGE_EXTENSIONS
+
+    if not is_pdf and not is_image:
+        return jsonify({'success': False, 'error': '只支持 PDF 和图片文件 (jpg, png, gif, bmp)'}), 400
 
     # 生成唯一文件ID
     file_id = str(uuid.uuid4())
-    file_path = os.path.join(UPLOAD_FOLDER, f"{file_id}.pdf")
+    file_path = os.path.join(UPLOAD_FOLDER, f"{file_id}{file_ext}")
 
     # 保存文件
     file.save(file_path)
 
     try:
-        # 读取 PDF 信息
-        doc = fitz.open(file_path)
-        page_count = len(doc)
+        if is_pdf:
+            # 读取 PDF 信息
+            doc = fitz.open(file_path)
+            page_count = len(doc)
 
-        pages = []
-        for i in range(page_count):
-            page = doc[i]
-            rect = page.rect
-            pages.append({
-                'page_num': i,
-                'width': rect.width,
-                'height': rect.height,
-                'thumbnail': f'/api/thumbnail/{file_id}/{i}'
+            pages = []
+            for i in range(page_count):
+                page = doc[i]
+                rect = page.rect
+                pages.append({
+                    'page_num': i,
+                    'width': rect.width,
+                    'height': rect.height,
+                    'thumbnail': f'/api/thumbnail/{file_id}/{i}'
+                })
+
+            doc.close()
+
+            # 存储文件信息
+            uploaded_files[file_id] = {
+                'path': file_path,
+                'filename': file.filename,
+                'page_count': page_count,
+                'type': 'pdf'
+            }
+
+            return jsonify({
+                'success': True,
+                'file_id': file_id,
+                'filename': file.filename,
+                'page_count': page_count,
+                'pages': pages,
+                'type': 'pdf'
             })
 
-        doc.close()
+        else:  # 图片文件
+            # 读取图片信息
+            img = Image.open(file_path)
+            width, height = img.size
+            img.close()
 
-        # 存储文件信息
-        uploaded_files[file_id] = {
-            'path': file_path,
-            'filename': file.filename,
-            'page_count': page_count
-        }
+            # 转换像素为点 (72 DPI)
+            width_pt = width * 72 / 96  # 假设屏幕 DPI 为 96
+            height_pt = height * 72 / 96
 
-        return jsonify({
-            'success': True,
-            'file_id': file_id,
-            'filename': file.filename,
-            'page_count': page_count,
-            'pages': pages
-        })
+            # 存储文件信息
+            uploaded_files[file_id] = {
+                'path': file_path,
+                'filename': file.filename,
+                'page_count': 1,  # 图片只有一页
+                'type': 'image',
+                'width': width_pt,
+                'height': height_pt
+            }
+
+            return jsonify({
+                'success': True,
+                'file_id': file_id,
+                'filename': file.filename,
+                'page_count': 1,
+                'pages': [{
+                    'page_num': 0,
+                    'width': width_pt,
+                    'height': height_pt,
+                    'thumbnail': f'/api/thumbnail/{file_id}/0'
+                }],
+                'type': 'image'
+            })
 
     except Exception as e:
         # 如果读取失败，删除文件
         if os.path.exists(file_path):
             os.remove(file_path)
-        return jsonify({'success': False, 'error': f'无法读取 PDF: {str(e)}'}), 400
+        return jsonify({'success': False, 'error': f'无法读取文件: {str(e)}'}), 400
 
 
 @app.route('/api/thumbnail/<file_id>/<int:page_num>')
@@ -105,6 +153,8 @@ def get_thumbnail(file_id, page_num):
         return jsonify({'error': '文件不存在'}), 404
 
     file_info = uploaded_files[file_id]
+    file_type = file_info.get('type', 'pdf')
+
     # 固定缩略图宽度为 120px，高度按比例计算
     target_width = float(request.args.get('width', 120))
 
@@ -119,41 +169,78 @@ def get_thumbnail(file_id, page_num):
             pass  # 忽略无效的裁剪参数
 
     try:
-        doc = fitz.open(file_info['path'])
+        if file_type == 'image':
+            # 处理图片文件
+            img = Image.open(file_info['path'])
 
-        if page_num < 0 or page_num >= len(doc):
+            # 如果有裁剪参数，先裁剪
+            if crop_rect:
+                # 转换点坐标为像素坐标
+                dpi_scale = 96 / 72
+                crop_box = (
+                    int(crop_rect.x0 * dpi_scale),
+                    int(crop_rect.y0 * dpi_scale),
+                    int(crop_rect.x1 * dpi_scale),
+                    int(crop_rect.y1 * dpi_scale)
+                )
+                img = img.crop(crop_box)
+
+            # 计算缩放后的尺寸
+            width, height = img.size
+            scale = target_width / width
+            new_height = int(height * scale)
+
+            # 缩放图片
+            img = img.resize((int(target_width), new_height), Image.Resampling.LANCZOS)
+
+            # 转换为 PNG
+            img_io = BytesIO()
+            img.save(img_io, 'PNG')
+            img_io.seek(0)
+            img.close()
+
+            return send_file(
+                img_io,
+                mimetype='image/png',
+                as_attachment=False
+            )
+
+        else:  # PDF 文件
+            doc = fitz.open(file_info['path'])
+
+            if page_num < 0 or page_num >= len(doc):
+                doc.close()
+                return jsonify({'error': '页码无效'}), 400
+
+            page = doc[page_num]
+
+            # 确定要渲染的矩形区域
+            if crop_rect:
+                # 验证裁剪矩形在页面范围内
+                page_rect = page.rect
+                crop_rect = crop_rect & page_rect  # 取交集
+                if crop_rect.is_empty:
+                    crop_rect = page_rect
+                render_rect = crop_rect
+            else:
+                render_rect = page.rect
+
+            # 计算缩放比例以达到目标宽度
+            scale = target_width / render_rect.width
+
+            # 渲染为图片（使用 clip 参数裁剪）
+            mat = fitz.Matrix(scale, scale)
+            pix = page.get_pixmap(matrix=mat, clip=crop_rect)
+
+            # 转换为 PNG
+            img_data = pix.tobytes("png")
             doc.close()
-            return jsonify({'error': '页码无效'}), 400
 
-        page = doc[page_num]
-
-        # 确定要渲染的矩形区域
-        if crop_rect:
-            # 验证裁剪矩形在页面范围内
-            page_rect = page.rect
-            crop_rect = crop_rect & page_rect  # 取交集
-            if crop_rect.is_empty:
-                crop_rect = page_rect
-            render_rect = crop_rect
-        else:
-            render_rect = page.rect
-
-        # 计算缩放比例以达到目标宽度
-        scale = target_width / render_rect.width
-
-        # 渲染为图片（使用 clip 参数裁剪）
-        mat = fitz.Matrix(scale, scale)
-        pix = page.get_pixmap(matrix=mat, clip=crop_rect)
-
-        # 转换为 PNG
-        img_data = pix.tobytes("png")
-        doc.close()
-
-        return send_file(
-            BytesIO(img_data),
-            mimetype='image/png',
-            as_attachment=False
-        )
+            return send_file(
+                BytesIO(img_data),
+                mimetype='image/png',
+                as_attachment=False
+            )
 
     except Exception as e:
         return jsonify({'error': f'生成缩略图失败: {str(e)}'}), 500
@@ -207,6 +294,7 @@ def export_pdf():
                 continue
 
             file_info = uploaded_files[file_id]
+            file_type = file_info.get('type', 'pdf')
             page_num = item.get('page_num', 0)
             x = item.get('x', 0)
             y = item.get('y', 0)
@@ -216,31 +304,65 @@ def export_pdf():
             clip_data = item.get('clip')  # 裁剪数据 [x0, y0, x1, y1]
 
             try:
-                src_doc = fitz.open(file_info['path'])
-
-                if page_num < 0 or page_num >= len(src_doc):
-                    src_doc.close()
-                    continue
-
                 # 定义目标区域
                 dest_rect = fitz.Rect(x, y, x + width, y + height)
 
-                # 定义裁剪矩形（如果有裁剪数据）
-                clip_rect = None
-                if clip_data and len(clip_data) == 4:
-                    clip_rect = fitz.Rect(clip_data[0], clip_data[1],
-                                         clip_data[2], clip_data[3])
+                if file_type == 'image':
+                    # 处理图片文件
+                    img = Image.open(file_info['path'])
 
-                # 使用 show_pdf_page 嵌入 PDF 页面（保持矢量质量，支持裁剪）
-                new_page.show_pdf_page(
-                    dest_rect,
-                    src_doc,
-                    page_num,
-                    rotate=rotation,
-                    clip=clip_rect  # 关键：使用 clip 参数实现裁剪
-                )
+                    # 如果有裁剪，先裁剪图片
+                    if clip_data and len(clip_data) == 4:
+                        # 转换点坐标为像素坐标
+                        dpi_scale = 96 / 72
+                        crop_box = (
+                            int(clip_data[0] * dpi_scale),
+                            int(clip_data[1] * dpi_scale),
+                            int(clip_data[2] * dpi_scale),
+                            int(clip_data[3] * dpi_scale)
+                        )
+                        img = img.crop(crop_box)
 
-                src_doc.close()
+                    # 处理旋转
+                    if rotation == 90:
+                        img = img.rotate(-90, expand=True)
+                    elif rotation == 180:
+                        img = img.rotate(-180, expand=True)
+                    elif rotation == 270:
+                        img = img.rotate(-270, expand=True)
+
+                    # 将图片转换为字节流
+                    img_bytes = BytesIO()
+                    img.save(img_bytes, format='PNG')
+                    img_bytes.seek(0)
+                    img.close()
+
+                    # 插入图片到 PDF
+                    new_page.insert_image(dest_rect, stream=img_bytes.getvalue())
+
+                else:  # PDF 文件
+                    src_doc = fitz.open(file_info['path'])
+
+                    if page_num < 0 or page_num >= len(src_doc):
+                        src_doc.close()
+                        continue
+
+                    # 定义裁剪矩形（如果有裁剪数据）
+                    clip_rect = None
+                    if clip_data and len(clip_data) == 4:
+                        clip_rect = fitz.Rect(clip_data[0], clip_data[1],
+                                             clip_data[2], clip_data[3])
+
+                    # 使用 show_pdf_page 嵌入 PDF 页面（保持矢量质量，支持裁剪）
+                    new_page.show_pdf_page(
+                        dest_rect,
+                        src_doc,
+                        page_num,
+                        rotate=rotation,
+                        clip=clip_rect  # 关键：使用 clip 参数实现裁剪
+                    )
+
+                    src_doc.close()
 
             except Exception as e:
                 print(f"处理页面时出错: {e}")

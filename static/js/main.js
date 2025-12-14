@@ -194,8 +194,16 @@ async function handleFileSelect(e) {
     const files = Array.from(e.target.files);
 
     for (const file of files) {
-        if (!file.name.toLowerCase().endsWith('.pdf')) {
-            alert(`${file.name} 不是 PDF 文件`);
+        const fileName = file.name.toLowerCase();
+        const isValidFile = fileName.endsWith('.pdf') ||
+                           fileName.endsWith('.jpg') ||
+                           fileName.endsWith('.jpeg') ||
+                           fileName.endsWith('.png') ||
+                           fileName.endsWith('.gif') ||
+                           fileName.endsWith('.bmp');
+
+        if (!isValidFile) {
+            alert(`${file.name} 不是支持的文件格式（支持 PDF 和图片）`);
             continue;
         }
 
@@ -230,7 +238,8 @@ async function uploadFile(file) {
             state.uploadedFiles.set(data.file_id, {
                 filename: data.filename,
                 pageCount: data.page_count,
-                pages: pages
+                pages: pages,
+                type: data.type || 'pdf'  // 存储文件类型
             });
 
             renderFileList();
@@ -348,10 +357,19 @@ function updateCanvasSize() {
     // 应用自动缩放和用户缩放
     state.scale = autoScale * state.zoomLevel;
 
-    state.canvas.width = state.canvasWidth;
-    state.canvas.height = state.canvasHeight;
+    // 获取设备像素比以提高清晰度
+    const dpr = window.devicePixelRatio || 1;
+
+    // 设置 Canvas 的实际像素尺寸（考虑设备像素比）
+    state.canvas.width = state.canvasWidth * dpr;
+    state.canvas.height = state.canvasHeight * dpr;
+
+    // 设置 Canvas 的显示尺寸
     state.canvas.style.width = `${state.canvasWidth * state.scale}px`;
     state.canvas.style.height = `${state.canvasHeight * state.scale}px`;
+
+    // 缩放绘图上下文以匹配设备像素比
+    state.ctx.scale(dpr, dpr);
 
     render();
 }
@@ -385,6 +403,7 @@ function handleCanvasDrop(e) {
 }
 
 function addItemToCanvas(fileId, pageNum, x, y, width, height, image) {
+    const fileInfo = state.uploadedFiles.get(fileId);
     const item = {
         id: state.nextItemId++,
         fileId,
@@ -395,7 +414,8 @@ function addItemToCanvas(fileId, pageNum, x, y, width, height, image) {
         height,
         rotation: 0,
         image,
-        aspectRatio: width / height  // 保存原始宽高比
+        aspectRatio: width / height,  // 保存原始宽高比
+        type: fileInfo ? fileInfo.type : 'pdf'  // 添加文件类型
     };
 
     state.canvasItems.push(item);
@@ -869,7 +889,8 @@ async function exportPDF() {
                 y: item.y,
                 width: item.width,
                 height: item.height,
-                rotation: item.rotation
+                rotation: item.rotation,
+                type: item.type || 'pdf'  // 添加类型信息
             };
 
             // 如果有裁剪数据，添加 clip 参数
