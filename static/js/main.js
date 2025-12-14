@@ -7,7 +7,7 @@
 const state = {
     uploadedFiles: new Map(), // file_id -> {filename, pageCount, pages: [{pageNum, width, height, thumbnail, image}]}
     canvasItems: [], // 画布上的元素 [{id, fileId, pageNum, x, y, width, height, rotation, image, aspectRatio, crop}]
-    selectedItem: null,
+    selectedItems: [], // 选中的元素数组（支持多选）
     dragState: null, // {type: 'move'|'resize', item, startX, startY, handle, originalRect}
     canvas: null,
     ctx: null,
@@ -102,6 +102,17 @@ function initUpload() {
 function initToolbar() {
     document.getElementById('clearBtn').addEventListener('click', clearCanvas);
     document.getElementById('exportBtn').addEventListener('click', exportPDF);
+
+    // 对齐按钮事件
+    document.getElementById('alignLeftBtn').addEventListener('click', alignLeft);
+    document.getElementById('alignCenterHBtn').addEventListener('click', alignCenterH);
+    document.getElementById('alignRightBtn').addEventListener('click', alignRight);
+    document.getElementById('alignTopBtn').addEventListener('click', alignTop);
+    document.getElementById('alignCenterVBtn').addEventListener('click', alignCenterV);
+    document.getElementById('alignBottomBtn').addEventListener('click', alignBottom);
+    document.getElementById('distributeHBtn').addEventListener('click', distributeH);
+    document.getElementById('distributeVBtn').addEventListener('click', distributeV);
+    document.getElementById('alignCanvasCenterBtn').addEventListener('click', alignCanvasCenter);
 }
 
 function initSettings() {
@@ -166,7 +177,7 @@ function initContextMenu() {
 
     contextMenu.addEventListener('click', (e) => {
         const action = e.target.dataset.action;
-        if (action && state.selectedItem) {
+        if (action && state.selectedItems.length > 0) {
             handleContextMenuAction(action);
         }
         contextMenu.style.display = 'none';
@@ -175,7 +186,7 @@ function initContextMenu() {
 
 function initKeyboard() {
     document.addEventListener('keydown', (e) => {
-        if (!state.selectedItem) return;
+        if (state.selectedItems.length === 0) return;
 
         switch (e.key) {
             case 'Delete':
@@ -419,7 +430,7 @@ function addItemToCanvas(fileId, pageNum, x, y, width, height, image) {
     };
 
     state.canvasItems.push(item);
-    state.selectedItem = item;
+    state.selectedItems = [item];
 
     render();
     updateItemCount();
@@ -436,17 +447,17 @@ function handleCanvasMouseDown(e) {
         return;
     }
 
-    // 检查是否点击了控制点
-    if (state.selectedItem) {
-        const handle = getHandleAtPoint(state.selectedItem, x, y);
+    // 检查是否点击了控制点（只在单选时显示控制点）
+    if (state.selectedItems.length === 1) {
+        const handle = getHandleAtPoint(state.selectedItems[0], x, y);
         if (handle) {
             state.dragState = {
                 type: 'resize',
-                item: state.selectedItem,
+                item: state.selectedItems[0],
                 handle: handle,
                 startX: x,
                 startY: y,
-                originalRect: { ...state.selectedItem },
+                originalRect: { ...state.selectedItems[0] },
                 shiftKey: e.shiftKey
             };
             return;
@@ -456,18 +467,38 @@ function handleCanvasMouseDown(e) {
     // 检查是否点击了元素
     const item = getItemAtPoint(x, y);
     if (item) {
-        state.selectedItem = item;
+        // Ctrl+点击：多选/取消选中
+        if (e.ctrlKey || e.metaKey) {
+            const index = state.selectedItems.indexOf(item);
+            if (index !== -1) {
+                // 已选中，取消选中
+                state.selectedItems.splice(index, 1);
+            } else {
+                // 未选中，添加到选中列表
+                state.selectedItems.push(item);
+            }
+        } else {
+            // 普通点击：如果点击的是已选中的项，保持多选状态；否则只选中当前项
+            if (!state.selectedItems.includes(item)) {
+                state.selectedItems = [item];
+            }
+        }
+
+        // 设置拖拽状态（拖拽所有选中的项）
         state.dragState = {
             type: 'move',
-            item: item,
+            items: [...state.selectedItems], // 拖拽所有选中项
             startX: x,
             startY: y,
-            offsetX: x - item.x,
-            offsetY: y - item.y
+            offsets: state.selectedItems.map(i => ({
+                x: x - i.x,
+                y: y - i.y
+            }))
         };
         render();
     } else {
-        state.selectedItem = null;
+        // 点击空白区域，清空选中
+        state.selectedItems = [];
 
         // 如果缩放级别大于1，启用画布平移
         if (state.zoomLevel > 1) {
@@ -507,9 +538,15 @@ function handleCanvasMouseMove(e) {
 
     if (state.dragState) {
         if (state.dragState.type === 'move') {
-            // 移动元素
-            state.dragState.item.x = x - state.dragState.offsetX;
-            state.dragState.item.y = y - state.dragState.offsetY;
+            // 移动所有选中的元素
+            const dx = x - state.dragState.startX;
+            const dy = y - state.dragState.startY;
+
+            state.dragState.items.forEach((item, index) => {
+                const offset = state.dragState.offsets[index];
+                item.x = x - offset.x;
+                item.y = y - offset.y;
+            });
             render();
         } else if (state.dragState.type === 'resize') {
             // 缩放元素
@@ -542,8 +579,11 @@ function handleCanvasContextMenu(e) {
 
     const item = getItemAtPoint(x, y);
     if (item) {
-        state.selectedItem = item;
-        render();
+        // 如果右键点击的项不在选中列表中，只选中当前项
+        if (!state.selectedItems.includes(item)) {
+            state.selectedItems = [item];
+            render();
+        }
 
         const contextMenu = document.getElementById('contextMenu');
         contextMenu.style.display = 'block';
@@ -580,11 +620,12 @@ function getHandleAtPoint(item, x, y) {
 function updateCursor(x, y) {
     let cursor = 'default';
 
-    if (state.selectedItem) {
-        const handle = getHandleAtPoint(state.selectedItem, x, y);
+    // 只在单选时检查控制点
+    if (state.selectedItems.length === 1) {
+        const handle = getHandleAtPoint(state.selectedItems[0], x, y);
         if (handle) {
             cursor = handle.cursor;
-        } else if (getItemAtPoint(x, y) === state.selectedItem) {
+        } else if (getItemAtPoint(x, y)) {
             cursor = 'move';
         }
     } else if (getItemAtPoint(x, y)) {
@@ -713,7 +754,7 @@ function render() {
         ctx.drawImage(item.image, item.x, item.y, item.width, item.height);
 
         // 绘制边框
-        if (item === state.selectedItem) {
+        if (state.selectedItems.includes(item)) {
             ctx.strokeStyle = '#2196F3';
             ctx.lineWidth = 2;
             ctx.strokeRect(item.x, item.y, item.width, item.height);
@@ -726,15 +767,18 @@ function render() {
         ctx.restore();
     });
 
-    // 绘制选中元素的控制点（非裁剪模式）
-    if (state.selectedItem && !state.cropMode) {
-        drawHandles(state.selectedItem);
+    // 绘制选中元素的控制点（只在单选且非裁剪模式时显示）
+    if (state.selectedItems.length === 1 && !state.cropMode) {
+        drawHandles(state.selectedItems[0]);
     }
 
     // 绘制裁剪覆盖层（裁剪模式）
     if (state.cropMode && state.cropTarget) {
         drawCropOverlay(ctx);
     }
+
+    // 更新对齐按钮状态
+    updateAlignmentButtons();
 }
 
 function drawHandles(item) {
@@ -806,14 +850,16 @@ function drawGrid(ctx) {
 
 // ==================== 右键菜单操作 ====================
 function handleContextMenuAction(action) {
-    if (!state.selectedItem) return;
+    if (state.selectedItems.length === 0) return;
 
-    const index = state.canvasItems.indexOf(state.selectedItem);
+    // 图层操作只对第一个选中项生效
+    const item = state.selectedItems[0];
+    const index = state.canvasItems.indexOf(item);
 
     switch (action) {
         case 'bringToFront':
             state.canvasItems.splice(index, 1);
-            state.canvasItems.push(state.selectedItem);
+            state.canvasItems.push(item);
             break;
         case 'bringForward':
             if (index < state.canvasItems.length - 1) {
@@ -829,7 +875,7 @@ function handleContextMenuAction(action) {
             break;
         case 'sendToBack':
             state.canvasItems.splice(index, 1);
-            state.canvasItems.unshift(state.selectedItem);
+            state.canvasItems.unshift(item);
             break;
         case 'rotate':
             rotateSelectedItem();
@@ -843,20 +889,24 @@ function handleContextMenuAction(action) {
 }
 
 function rotateSelectedItem() {
-    if (!state.selectedItem) return;
-    state.selectedItem.rotation = (state.selectedItem.rotation + 90) % 360;
+    if (state.selectedItems.length === 0) return;
+    state.selectedItems.forEach(item => {
+        item.rotation = (item.rotation + 90) % 360;
+    });
     render();
 }
 
 function deleteSelectedItem() {
-    if (!state.selectedItem) return;
-    const index = state.canvasItems.indexOf(state.selectedItem);
-    if (index !== -1) {
-        state.canvasItems.splice(index, 1);
-        state.selectedItem = null;
-        render();
-        updateItemCount();
-    }
+    if (state.selectedItems.length === 0) return;
+    state.selectedItems.forEach(item => {
+        const index = state.canvasItems.indexOf(item);
+        if (index !== -1) {
+            state.canvasItems.splice(index, 1);
+        }
+    });
+    state.selectedItems = [];
+    render();
+    updateItemCount();
 }
 
 // ==================== 工具栏操作 ====================
@@ -865,7 +915,7 @@ function clearCanvas() {
 
     if (confirm('确定要清空画布吗？')) {
         state.canvasItems = [];
-        state.selectedItem = null;
+        state.selectedItems = [];
         render();
         updateItemCount();
     }
@@ -989,12 +1039,17 @@ function initCropMode() {
 }
 
 function enterCropMode() {
-    if (!state.selectedItem) {
+    if (state.selectedItems.length === 0) {
         alert('请先选择一个页面');
         return;
     }
 
-    const item = state.selectedItem;
+    if (state.selectedItems.length > 1) {
+        alert('裁剪模式只支持单个页面，请只选择一个页面');
+        return;
+    }
+
+    const item = state.selectedItems[0];
 
     // 进入裁剪模式
     state.cropMode = true;
@@ -1299,4 +1354,169 @@ function resizeCropRect(x, y) {
     if (newRect.width >= 20 && newRect.height >= 20) {
         state.cropRect = newRect;
     }
+}
+
+// ==================== 对齐功能 ====================
+
+// 获取选中项的边界框
+function getSelectionBounds(items) {
+    if (items.length === 0) return null;
+
+    let minX = Infinity, minY = Infinity;
+    let maxX = -Infinity, maxY = -Infinity;
+
+    items.forEach(item => {
+        minX = Math.min(minX, item.x);
+        minY = Math.min(minY, item.y);
+        maxX = Math.max(maxX, item.x + item.width);
+        maxY = Math.max(maxY, item.y + item.height);
+    });
+
+    return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
+}
+
+// 水平对齐 - 左对齐
+function alignLeft() {
+    if (state.selectedItems.length < 2) return;
+    const minX = Math.min(...state.selectedItems.map(i => i.x));
+    state.selectedItems.forEach(item => item.x = minX);
+    render();
+}
+
+// 水平对齐 - 居中
+function alignCenterH() {
+    if (state.selectedItems.length < 2) return;
+    const bounds = getSelectionBounds(state.selectedItems);
+    const centerX = bounds.minX + bounds.width / 2;
+    state.selectedItems.forEach(item => {
+        item.x = centerX - item.width / 2;
+    });
+    render();
+}
+
+// 水平对齐 - 右对齐
+function alignRight() {
+    if (state.selectedItems.length < 2) return;
+    const maxX = Math.max(...state.selectedItems.map(i => i.x + i.width));
+    state.selectedItems.forEach(item => {
+        item.x = maxX - item.width;
+    });
+    render();
+}
+
+// 垂直对齐 - 顶部对齐
+function alignTop() {
+    if (state.selectedItems.length < 2) return;
+    const minY = Math.min(...state.selectedItems.map(i => i.y));
+    state.selectedItems.forEach(item => item.y = minY);
+    render();
+}
+
+// 垂直对齐 - 居中
+function alignCenterV() {
+    if (state.selectedItems.length < 2) return;
+    const bounds = getSelectionBounds(state.selectedItems);
+    const centerY = bounds.minY + bounds.height / 2;
+    state.selectedItems.forEach(item => {
+        item.y = centerY - item.height / 2;
+    });
+    render();
+}
+
+// 垂直对齐 - 底部对齐
+function alignBottom() {
+    if (state.selectedItems.length < 2) return;
+    const maxY = Math.max(...state.selectedItems.map(i => i.y + i.height));
+    state.selectedItems.forEach(item => {
+        item.y = maxY - item.height;
+    });
+    render();
+}
+
+// 水平分布
+function distributeH() {
+    if (state.selectedItems.length < 3) return;
+
+    // 按 x 坐标排序
+    const sorted = [...state.selectedItems].sort((a, b) => a.x - b.x);
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+
+    // 计算总间距
+    const totalWidth = sorted.reduce((sum, item) => sum + item.width, 0);
+    const availableSpace = (last.x + last.width) - first.x - totalWidth;
+    const gap = availableSpace / (sorted.length - 1);
+
+    // 分布项目
+    let currentX = first.x + first.width + gap;
+    for (let i = 1; i < sorted.length - 1; i++) {
+        sorted[i].x = currentX;
+        currentX += sorted[i].width + gap;
+    }
+
+    render();
+}
+
+// 垂直分布
+function distributeV() {
+    if (state.selectedItems.length < 3) return;
+
+    // 按 y 坐标排序
+    const sorted = [...state.selectedItems].sort((a, b) => a.y - b.y);
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+
+    // 计算总间距
+    const totalHeight = sorted.reduce((sum, item) => sum + item.height, 0);
+    const availableSpace = (last.y + last.height) - first.y - totalHeight;
+    const gap = availableSpace / (sorted.length - 1);
+
+    // 分布项目
+    let currentY = first.y + first.height + gap;
+    for (let i = 1; i < sorted.length - 1; i++) {
+        sorted[i].y = currentY;
+        currentY += sorted[i].height + gap;
+    }
+
+    render();
+}
+
+// 相对画布居中
+function alignCanvasCenter() {
+    if (state.selectedItems.length === 0) return;
+
+    const bounds = getSelectionBounds(state.selectedItems);
+    const offsetX = (state.canvasWidth / 2) - (bounds.minX + bounds.width / 2);
+    const offsetY = (state.canvasHeight / 2) - (bounds.minY + bounds.height / 2);
+
+    state.selectedItems.forEach(item => {
+        item.x += offsetX;
+        item.y += offsetY;
+    });
+
+    render();
+}
+
+// 更新对齐按钮状态
+function updateAlignmentButtons() {
+    const count = state.selectedItems.length;
+
+    // 需要至少 2 个选中项
+    const needsTwo = ['alignLeftBtn', 'alignCenterHBtn', 'alignRightBtn',
+                      'alignTopBtn', 'alignCenterVBtn', 'alignBottomBtn'];
+    needsTwo.forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.disabled = count < 2;
+    });
+
+    // 需要至少 3 个选中项
+    const needsThree = ['distributeHBtn', 'distributeVBtn'];
+    needsThree.forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.disabled = count < 3;
+    });
+
+    // 需要至少 1 个选中项
+    const btn = document.getElementById('alignCanvasCenterBtn');
+    if (btn) btn.disabled = count < 1;
 }

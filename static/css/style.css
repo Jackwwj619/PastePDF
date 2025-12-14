@@ -483,6 +483,27 @@ body {
     border-color: #1a1a1a;
 }
 
+.btn-tool:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    background: transparent;
+}
+
+/* 按钮组样式 */
+.btn-group {
+    display: inline-flex;
+    gap: 2px;
+    margin-left: 8px;
+    padding-left: 8px;
+    border-left: 1px solid #333;
+}
+
+.btn-group:first-child {
+    border-left: none;
+    margin-left: 0;
+    padding-left: 0;
+}
+
 /* 裁剪操作栏 */
 .crop-action-bar {
     position: fixed;
