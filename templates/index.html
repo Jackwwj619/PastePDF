@@ -15,7 +15,7 @@
             <!-- 工具按钮 -->
             <div class="toolbar-menu">
                 <button id="cropBtn" class="btn btn-tool" title="裁剪选中的页面">
-                    <span class="icon">✂️</span> 裁剪
+                    裁剪
                 </button>
             </div>
 
@@ -70,7 +70,13 @@
                 <!-- 上传区域 -->
                 <div class="upload-section">
                     <div id="uploadArea" class="upload-area">
-                        <div class="upload-icon">📄</div>
+                        <div class="upload-icon">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                        </div>
                         <p>点击或拖拽上传 PDF 或图片</p>
                         <input type="file" id="fileInput" accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp" multiple hidden>
                     </div>

@@ -1,115 +1,111 @@
-# PastePDF - 浏览器端 PDF 拼接工具
+# PastePDF
 
-## 项目概述
+A browser-based PDF page merging tool. Run locally and access via browser to visually arrange and merge multiple PDF pages into a single page using drag-and-drop.
 
-一个基于 Web 的 PDF 页面拼接工具，本地启动服务后通过浏览器访问，支持可视化拖拽布局，将多个 PDF 文件的页面自由排列合并成一页。
 
-**核心原则：使用 PyMuPDF 原生 PDF 操作，非图片转换方式**
+## Features
 
-## 核心特性
+- **Zero Installation**: Run `python app.py`, open `http://127.0.0.1:5000` in browser
+- **Visual Drag & Drop**: Freely arrange PDF pages on canvas with real-time preview
+- **Crop Support**: Crop selected pages to specific regions
+- **Grid & Zoom**: Toggle grid overlay and zoom canvas with Ctrl+scroll
 
-- **零安装使用**：运行 `python app.py` 后，浏览器打开 `http://127.0.0.1:5000` 即可使用
-- **可视化拖拽**：在画布上自由拖拽 PDF 页面，所见即所得
-- **自由缩放**：拖拽边角调整每个 PDF 页面的大小和比例
-- **实时预览**：拖拽过程中实时显示布局效果
-- **原生 PDF 合并**：使用 PyMuPDF 的 `show_pdf_page()` 直接嵌入 PDF 页面，保持矢量质量
+## Quick Start
 
----
+```bash
+# Install dependencies
+pip install -r requirements.txt
 
-## 技术实现说明
+# Start server
+python app.py
 
-### 预览 vs 导出
+# Open in browser
+http://127.0.0.1:5000
+```
 
-| 阶段 | 实现方式 | 说明 |
-|------|----------|------|
-| **预览** | PDF 页面渲染为图片 | 用于浏览器 Canvas 显示，仅作预览用途 |
-| **导出** | PyMuPDF 原生操作 | 使用 `page.show_pdf_page()` 直接嵌入 PDF 内容，保持矢量/文字可选 |
+## How It Works
 
-### 为什么这样设计？
+### Two-Phase Approach: Preview vs Export
 
-1. **浏览器无法直接渲染 PDF 到 Canvas**：必须转图片才能在前端显示
-2. **导出时使用原生 PDF 操作**：`show_pdf_page()` 将源 PDF 页面作为 XObject 嵌入，不会栅格化
-3. **保持 PDF 质量**：导出的 PDF 中文字可选、矢量图形可缩放、不失真
+| Phase | Implementation | Purpose |
+|-------|---------------|---------|
+| **Preview** | PDF pages rendered to PNG images | Browser Canvas display only |
+| **Export** | PyMuPDF native `show_pdf_page()` | Embeds PDF content as XObject, preserves vector/text |
 
-### 核心 API：`page.show_pdf_page()`
+**Why this design?**
+- Browsers cannot directly render PDF to Canvas - must convert to images for preview
+- Export uses `page.show_pdf_page()` to embed source PDF pages without rasterization
+- Final PDF maintains selectable text, scalable vectors, and no quality loss
+
+### Core Technology: `page.show_pdf_page()`
 
 ```python
 import fitz
 
-# 创建新文档
+# Create new document
 new_doc = fitz.open()
 new_page = new_doc.new_page(width=595, height=842)
 
-# 打开源 PDF
+# Open source PDF
 src_doc = fitz.open("source.pdf")
 
-# 将源 PDF 第一页嵌入到目标位置
-# rect 定义目标区域 (x0, y0, x1, y1)
-dest_rect = fitz.Rect(0, 0, 297, 421)  # 左上角，宽297，高421
-new_page.show_pdf_page(dest_rect, src_doc, 0)  # 0 = 第一页
+# Embed source PDF page into destination rectangle
+dest_rect = fitz.Rect(0, 0, 297, 421)  # x0, y0, x1, y1
+new_page.show_pdf_page(dest_rect, src_doc, 0)  # 0 = first page
 
-# 支持旋转
+# Supports rotation
 new_page.show_pdf_page(dest_rect, src_doc, 0, rotate=90)
 
 new_doc.save("output.pdf")
 ```
 
----
+## Features Overview
 
-## 功能需求
+### File Management
+- Upload PDF/images via click or drag-and-drop
+- Multiple file upload support
+- Thumbnail preview for all pages
+- Delete uploaded files
 
-### 1. 文件管理
+### Canvas Operations
+- **Drag & Drop**: Position pages anywhere on canvas
+- **Resize**: 8 control handles (4 corners + 4 edge midpoints)
+- **Aspect Ratio**: Hold Shift while dragging to maintain proportions
+- **Rotate**: 90° rotation via right-click menu or keyboard shortcut
+- **Layer Control**: Adjust z-order of overlapping pages
+- **Crop**: Select and crop specific regions of pages
+- **Alignment Guides**: Visual guides when dragging
+- **Grid Overlay**: Toggle grid for precise positioning
+- **Zoom**: Ctrl+scroll to zoom canvas
 
-| 功能 | 描述 | 实现方式 |
-|------|------|----------|
-| 上传 PDF | 支持点击上传或拖拽文件到上传区域 | Flask 接收文件 |
-| 多文件上传 | 支持同时上传多个 PDF 文件 | 多文件表单 |
-| 文件列表 | 显示已上传的 PDF 文件列表及缩略图 | PyMuPDF 渲染缩略图 |
-| 删除文件 | 支持从列表中删除已上传的文件 | 删除临时文件 |
-| 页面选择 | 支持选择 PDF 的特定页面（默认第一页） | 下拉选择 |
+### Canvas Settings
+- **Preset Sizes**: A4, A3, Letter
+- **Custom Dimensions**: Input custom width/height in points (1pt = 1/72 inch)
+- **Orientation**: Toggle portrait/landscape
+- **Background Color**: Set output PDF background color
 
-### 2. 画布操作（前端交互）
+### Export
+- Generate merged PDF using PyMuPDF native operations
+- Preserves vector quality and selectable text
+- Automatic download to local machine
 
-| 功能 | 描述 | 实现方式 |
-|------|------|----------|
-| 拖拽定位 | 鼠标拖拽 PDF 页面到画布任意位置 | Canvas + JS 事件 |
-| **拖拽缩放** | 拖拽边角/边缘调整页面大小 | 8个控制点（四角+四边中点） |
-| **保持比例** | 按住 Shift 拖拽时保持宽高比 | JS 事件处理 |
-| **自由比例** | 默认可自由调整宽高比例 | 独立调整 width/height |
-| 旋转页面 | 支持 90°/180°/270° 旋转 | 旋转按钮或快捷键 |
-| 层级调整 | 支持调整重叠页面的上下层级 | 右键菜单或按钮 |
-| 对齐辅助 | 拖拽时显示对齐参考线 | Canvas 绘制辅助线 |
-| 删除页面 | 从画布删除已添加的页面 | Delete 键或按钮 |
+## Keyboard Shortcuts
 
-### 3. 画布设置
+| Shortcut | Action |
+|----------|--------|
+| Delete | Delete selected page |
+| Ctrl+Z | Undo |
+| Ctrl+Y | Redo |
+| R | Rotate selected page 90° |
+| Shift+Drag | Maintain aspect ratio while resizing |
+| Ctrl+Scroll | Zoom canvas |
 
-| 功能 | 描述 |
-|------|------|
-| 预设尺寸 | A4、A3、Letter、自适应 |
-| 自定义尺寸 | 支持输入自定义宽高（单位：pt，1pt = 1/72 inch） |
-| 横向/纵向 | 支持切换页面方向 |
-| 背景色 | 支持设置输出 PDF 的背景色（默认白色） |
+## API Endpoints
 
-### 4. 导出功能（PyMuPDF 原生）
-
-| 功能 | 描述 | 实现方式 |
-|------|------|----------|
-| 导出 PDF | 根据画布布局生成合并后的 PDF | `show_pdf_page()` |
-| 矢量保持 | 导出 PDF 保持矢量质量，文字可选 | 原生 PDF 嵌入 |
-| 文件下载 | 生成后自动下载到本地 | Flask send_file |
-
----
-
-## API 设计
-
-### 1. 上传 PDF
-
+### Upload PDF
 ```
 POST /api/upload
 Content-Type: multipart/form-data
-
-Request:
-  - file: PDF 文件
 
 Response:
 {
@@ -117,28 +113,18 @@ Response:
   "file_id": "uuid-string",
   "filename": "example.pdf",
   "page_count": 5,
-  "pages": [
-    {
-      "page_num": 0,
-      "width": 595,
-      "height": 842,
-      "thumbnail": "/api/thumbnail/uuid-string/0"
-    },
-    ...
-  ]
+  "pages": [...]
 }
 ```
 
-### 2. 获取页面缩略图（仅用于预览）
-
+### Get Thumbnail (Preview Only)
 ```
 GET /api/thumbnail/<file_id>/<page_num>?scale=1.0
 
-Response: PNG 图片（用于 Canvas 显示）
+Response: PNG image for Canvas display
 ```
 
-### 3. 导出合并 PDF（PyMuPDF 原生操作）
-
+### Export Merged PDF (Native PyMuPDF)
 ```
 POST /api/export
 Content-Type: application/json
@@ -157,168 +143,54 @@ Request:
       "width": 297.5,
       "height": 421,
       "rotation": 0
-    },
-    {
-      "file_id": "uuid-string-2",
-      "page_num": 0,
-      "x": 297.5,
-      "y": 0,
-      "width": 297.5,
-      "height": 421,
-      "rotation": 0
     }
   ]
 }
 
-Response:
-  Content-Type: application/pdf
-  Content-Disposition: attachment; filename="merged.pdf"
+Response: PDF file download
 ```
 
-### 4. 删除文件
-
+### Delete File
 ```
 DELETE /api/file/<file_id>
-
-Response:
-{
-  "success": true
-}
 ```
 
-### 5. 获取文件列表
-
+### List Files
 ```
 GET /api/files
-
-Response:
-{
-  "files": [
-    {
-      "file_id": "uuid",
-      "filename": "example.pdf",
-      "page_count": 5
-    }
-  ]
-}
 ```
 
----
-
-## 页面布局
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│  PastePDF                                        [清空] [导出PDF] │
-├──────────────────┬───────────────────────────────────────────────┤
-│                  │                                               │
-│  ┌────────────┐  │    ┌─────────────────────────────────────┐    │
-│  │  上传区域  │  │    │                                     │    │
-│  │ 点击或拖拽 │  │    │                                     │    │
-│  │  上传PDF   │  │    │                                     │    │
-│  └────────────┘  │    │           画布区域                   │    │
-│                  │    │      （拖拽布局 + 缩放控制点）        │    │
-│  已上传文件:     │    │                                     │    │
-│  ┌────────────┐  │    │    ┌───────●───────┐                │    │
-│  │ ┌────┐     │  │    │    ●              ●                │    │
-│  │ │缩略│ 1.pdf│ │    │    │    PDF 1     │                │    │
-│  │ │ 图 │ 3页  │  │    │    ●              ●                │    │
-│  │ └────┘     │  │    │    └───────●───────┘                │    │
-│  └────────────┘  │    │                                     │    │
-│  ┌────────────┐  │    │         ┌───────●───────┐           │    │
-│  │ ┌────┐     │  │    │         ●              ●           │    │
-│  │ │缩略│ 2.pdf│ │    │         │    PDF 2     │           │    │
-│  │ │ 图 │ 1页  │  │    │         ●              ●           │    │
-│  │ └────┘     │  │    │         └───────●───────┘           │    │
-│  └────────────┘  │    │                                     │    │
-│                  │    └─────────────────────────────────────┘    │
-├──────────────────┴───────────────────────────────────────────────┤
-│  画布: [A4 ▼] 宽:[595]pt 高:[842]pt [横向] │ 已添加 2 个页面     │
-└──────────────────────────────────────────────────────────────────┘
-
-● = 缩放控制点（8个：四角 + 四边中点）
-```
-
----
-
-## 交互说明
-
-### 拖拽缩放控制点
-
-```
-        ●───────────●───────────●
-        │                       │
-        ●       PDF 页面        ●
-        │                       │
-        ●───────────●───────────●
-
-- 四角控制点：同时调整宽高
-- 四边中点：单独调整宽或高
-- Shift + 拖拽四角：保持原始宽高比
-- 拖拽中心区域：移动位置
-```
-
-### 快捷键
-
-| 快捷键 | 功能 |
-|--------|------|
-| Delete | 删除选中的页面 |
-| Ctrl+Z | 撤销 |
-| Ctrl+Y | 重做 |
-| R | 旋转选中页面 90° |
-| Shift+拖拽 | 保持宽高比缩放 |
-
----
-
-## 目录结构
+## Project Structure
 
 ```
 pastepdf/
-├── app.py                 # Flask 主程序
-├── requirements.txt       # Python 依赖
-├── README.md              # 项目说明
+├── app.py                 # Flask server
+├── requirements.txt       # Python dependencies
+├── README.md
+├── CLAUDE.md              # Development guide
 ├── static/
 │   ├── css/
-│   │   └── style.css      # 样式
+│   │   └── style.css      # Styles
 │   └── js/
-│       └── main.js        # 前端拖拽/缩放逻辑
+│       └── main.js        # Canvas drag/resize logic
 ├── templates/
-│   └── index.html         # 主页面
-└── uploads/               # 临时上传目录（自动创建，程序退出时清理）
+│   └── index.html         # Main page
+└── uploads/               # Temporary upload directory (auto-created, cleaned on exit)
 ```
 
----
-
-## 快速开始
-
-```bash
-# 安装依赖
-pip install -r requirements.txt
-
-# 启动服务
-python app.py
-
-# 浏览器访问
-http://127.0.0.1:5000
-```
-
----
-
-## 依赖
+## Dependencies
 
 ```
 flask>=2.0
 pymupdf>=1.20
 ```
 
----
+## Implementation Notes
 
-## 实现要点
-
-### 后端（PyMuPDF）
+### Backend (PyMuPDF)
 
 ```python
-# 导出时的核心逻辑
+# Core export logic
 def export_pdf(canvas_width, canvas_height, items):
     new_doc = fitz.open()
     new_page = new_doc.new_page(width=canvas_width, height=canvas_height)
@@ -339,13 +211,22 @@ def export_pdf(canvas_width, canvas_height, items):
         )
         src_doc.close()
 
-    # 返回 PDF 字节流
     return new_doc.tobytes()
 ```
 
-### 前端（Canvas 拖拽）
+### Frontend (Canvas)
 
-- 使用原生 JavaScript 实现拖拽和缩放
-- Canvas 绑定 mousedown/mousemove/mouseup 事件
-- 检测鼠标位置判断是移动还是缩放
-- 实时重绘 Canvas 显示预览效果
+- Native JavaScript for drag-and-drop and resize
+- Canvas binds mousedown/mousemove/mouseup events
+- Detects mouse position to determine move vs resize action
+- Real-time Canvas redraw for preview
+- Calls `/api/thumbnail` to load page images for Canvas display
+- POST to `/api/export` with items array to generate final PDF
+
+## License
+
+MIT
+
+## Contributing
+
+Contributions welcome. Please ensure code follows the existing style and includes appropriate tests.
