@@ -14,7 +14,12 @@ const state = {
     canvasWidth: 595,
     canvasHeight: 842,
     backgroundColor: '#ffffff',
-    scale: 1, // 画布缩放比例（用于适配屏幕）
+    showGrid: false,        // 是否显示网格
+    scale: 1,               // 画布缩放比例（用于适配屏幕）
+    zoomLevel: 1,           // 用户缩放级别（Ctrl+滚轮）
+    panOffset: { x: 0, y: 0 }, // 画布平移偏移量
+    isPanning: false,       // 是否正在平移
+    panStart: { x: 0, y: 0 }, // 平移起始位置
     nextItemId: 1,
     // 裁剪模式状态
     cropMode: false,        // 是否处于裁剪模式
@@ -63,6 +68,9 @@ function initCanvas() {
     // 绑定拖拽事件（从侧边栏拖拽页面到画布）
     state.canvas.addEventListener('dragover', handleCanvasDragOver);
     state.canvas.addEventListener('drop', handleCanvasDrop);
+
+    // 绑定滚轮事件（Ctrl+滚轮缩放）
+    state.canvas.addEventListener('wheel', handleCanvasWheel, { passive: false });
 
     render();
 }
@@ -139,6 +147,12 @@ function initSettings() {
 
     bgColor.addEventListener('change', (e) => {
         state.backgroundColor = e.target.value;
+        render();
+    });
+
+    const gridToggle = document.getElementById('gridToggle');
+    gridToggle.addEventListener('change', (e) => {
+        state.showGrid = e.target.checked;
         render();
     });
 }
@@ -329,7 +343,10 @@ function updateCanvasSize() {
 
     const scaleX = maxWidth / state.canvasWidth;
     const scaleY = maxHeight / state.canvasHeight;
-    state.scale = Math.min(scaleX, scaleY, 1);
+    const autoScale = Math.min(scaleX, scaleY, 1);
+
+    // 应用自动缩放和用户缩放
+    state.scale = autoScale * state.zoomLevel;
 
     state.canvas.width = state.canvasWidth;
     state.canvas.height = state.canvasHeight;
@@ -431,6 +448,14 @@ function handleCanvasMouseDown(e) {
         render();
     } else {
         state.selectedItem = null;
+
+        // 如果缩放级别大于1，启用画布平移
+        if (state.zoomLevel > 1) {
+            state.isPanning = true;
+            state.panStart = { x: e.clientX, y: e.clientY };
+            document.querySelector('.canvas-section').classList.add('panning');
+        }
+
         render();
     }
 }
@@ -439,6 +464,20 @@ function handleCanvasMouseMove(e) {
     const rect = state.canvas.getBoundingClientRect();
     const x = (e.clientX - rect.left) / state.scale;
     const y = (e.clientY - rect.top) / state.scale;
+
+    // 处理画布平移
+    if (state.isPanning) {
+        const dx = e.clientX - state.panStart.x;
+        const dy = e.clientY - state.panStart.y;
+
+        state.panOffset.x += dx;
+        state.panOffset.y += dy;
+
+        state.panStart = { x: e.clientX, y: e.clientY };
+
+        updateCanvasTransform();
+        return;
+    }
 
     // 裁剪模式下的处理
     if (state.cropMode) {
@@ -466,6 +505,12 @@ function handleCanvasMouseMove(e) {
 function handleCanvasMouseUp(e) {
     state.dragState = null;
     state.cropDragState = null;
+
+    // 停止平移
+    if (state.isPanning) {
+        state.isPanning = false;
+        document.querySelector('.canvas-section').classList.remove('panning');
+    }
 }
 
 function handleCanvasContextMenu(e) {
@@ -626,6 +671,11 @@ function render() {
     ctx.fillStyle = state.backgroundColor;
     ctx.fillRect(0, 0, state.canvasWidth, state.canvasHeight);
 
+    // 绘制网格（如果启用）
+    if (state.showGrid) {
+        drawGrid(ctx);
+    }
+
     // 绘制所有元素
     state.canvasItems.forEach(item => {
         ctx.save();
@@ -683,6 +733,55 @@ function drawHandles(item) {
         ctx.fill();
         ctx.stroke();
     });
+}
+
+function drawGrid(ctx) {
+    const minorGridSize = 10; // 次网格间距（点）
+    const majorGridSize = 50; // 主网格间距（点）
+
+    ctx.save();
+
+    // 绘制次网格（细线）
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
+    ctx.lineWidth = 0.5;
+
+    for (let x = minorGridSize; x < state.canvasWidth; x += minorGridSize) {
+        if (x % majorGridSize !== 0) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, state.canvasHeight);
+            ctx.stroke();
+        }
+    }
+
+    for (let y = minorGridSize; y < state.canvasHeight; y += minorGridSize) {
+        if (y % majorGridSize !== 0) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(state.canvasWidth, y);
+            ctx.stroke();
+        }
+    }
+
+    // 绘制主网格（粗线）
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
+    ctx.lineWidth = 1;
+
+    for (let x = majorGridSize; x < state.canvasWidth; x += majorGridSize) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, state.canvasHeight);
+        ctx.stroke();
+    }
+
+    for (let y = majorGridSize; y < state.canvasHeight; y += majorGridSize) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(state.canvasWidth, y);
+        ctx.stroke();
+    }
+
+    ctx.restore();
 }
 
 // ==================== 右键菜单操作 ====================
@@ -815,6 +914,46 @@ async function exportPDF() {
 
 function updateItemCount() {
     document.getElementById('itemCount').textContent = `已添加 ${state.canvasItems.length} 个页面`;
+}
+
+// ==================== 画布缩放 ====================
+function handleCanvasWheel(e) {
+    // 只在按住 Ctrl 键时缩放，否则允许正常滚动
+    if (!e.ctrlKey) {
+        return; // 不阻止默认行为，允许容器滚动
+    }
+
+    // 阻止 Ctrl+滚轮的默认缩放行为
+    e.preventDefault();
+
+    // 计算缩放增量
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    const newZoomLevel = Math.max(0.1, Math.min(5, state.zoomLevel + delta));
+
+    // 更新缩放级别
+    state.zoomLevel = newZoomLevel;
+
+    // 如果缩放回到1，重置平移偏移
+    if (state.zoomLevel === 1) {
+        state.panOffset = { x: 0, y: 0 };
+        updateCanvasTransform();
+    }
+
+    // 更新显示
+    updateZoomDisplay();
+
+    // 重新计算画布尺寸
+    updateCanvasSize();
+}
+
+function updateZoomDisplay() {
+    const zoomPercent = Math.round(state.zoomLevel * 100);
+    document.getElementById('zoomLevel').textContent = `${zoomPercent}%`;
+}
+
+function updateCanvasTransform() {
+    const wrapper = document.querySelector('.canvas-wrapper');
+    wrapper.style.transform = `translate(${state.panOffset.x}px, ${state.panOffset.y}px)`;
 }
 
 // ==================== 裁剪模式 ====================

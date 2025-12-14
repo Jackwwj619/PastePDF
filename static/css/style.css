@@ -22,12 +22,13 @@ body {
 /* 顶部工具栏 */
 .toolbar {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    gap: 20px;
     padding: 10px 20px;
     background: #fff;
     border-bottom: 1px solid #e0e0e0;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    flex-wrap: wrap;
 }
 
 .logo {
@@ -36,9 +37,33 @@ body {
     color: #2196F3;
 }
 
+.toolbar-settings {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    flex: 1;
+    flex-wrap: wrap;
+}
+
 .toolbar-actions {
     display: flex;
+    align-items: center;
     gap: 10px;
+    margin-left: auto;
+}
+
+.item-count {
+    font-size: 13px;
+    color: #757575;
+    white-space: nowrap;
+}
+
+.zoom-level {
+    font-size: 13px;
+    color: #2196F3;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: help;
 }
 
 /* 按钮样式 */
@@ -225,28 +250,25 @@ body {
     background: #e0e0e0;
     overflow: auto;
     padding: 20px;
+    position: relative;
+}
+
+.canvas-section.panning {
+    cursor: grabbing !important;
 }
 
 .canvas-wrapper {
     background: #fff;
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
     position: relative;
+    transition: transform 0.05s ease-out;
 }
 
 #mainCanvas {
     display: block;
 }
 
-/* 底部设置栏 */
-.settings-bar {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    padding: 10px 20px;
-    background: #fff;
-    border-top: 1px solid #e0e0e0;
-}
-
+/* 设置组样式 */
 .setting-group {
     display: flex;
     align-items: center;
@@ -256,6 +278,7 @@ body {
 .setting-group label {
     font-size: 13px;
     color: #757575;
+    white-space: nowrap;
 }
 
 .setting-group input[type="number"] {
@@ -282,10 +305,8 @@ body {
     cursor: pointer;
 }
 
-.setting-group.status {
-    margin-left: auto;
-    color: #757575;
-    font-size: 13px;
+.setting-group input[type="checkbox"] {
+    cursor: pointer;
 }
 
 /* 右键菜单 */

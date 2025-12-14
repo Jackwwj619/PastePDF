@@ -1,0 +1,27 @@
+# PastePDF
+
+# Claude / agent related
+.claude/
+CLAUDE.md
+
+# User uploads
+uploads/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual env / env vars
+.venv/
+venv/
+.env
+
+# Logs
+*.log
+
+# Editors
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
