@@ -6,7 +6,7 @@
 // ==================== 全局状态 ====================
 const state = {
     uploadedFiles: new Map(), // file_id -> {filename, pageCount, pages: [{pageNum, width, height, thumbnail, image}]}
-    canvasItems: [], // 画布上的元素 [{id, fileId, pageNum, x, y, width, height, rotation, image}]
+    canvasItems: [], // 画布上的元素 [{id, fileId, pageNum, x, y, width, height, rotation, image, aspectRatio, crop}]
     selectedItem: null,
     dragState: null, // {type: 'move'|'resize', item, startX, startY, handle, originalRect}
     canvas: null,
@@ -15,7 +15,13 @@ const state = {
     canvasHeight: 842,
     backgroundColor: '#ffffff',
     scale: 1, // 画布缩放比例（用于适配屏幕）
-    nextItemId: 1
+    nextItemId: 1,
+    // 裁剪模式状态
+    cropMode: false,        // 是否处于裁剪模式
+    cropTarget: null,       // 正在裁剪的元素
+    cropRect: null,         // 裁剪矩形 {x, y, width, height}（相对于元素的坐标）
+    cropDragState: null,    // 裁剪拖拽状态
+    originalPageSize: null  // 原始页面尺寸（用于坐标转换）
 };
 
 // 缩放控制点位置
@@ -39,6 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initSettings();
     initContextMenu();
     initKeyboard();
+    initCropMode();
 });
 
 function initCanvas() {
@@ -386,6 +393,12 @@ function handleCanvasMouseDown(e) {
     const x = (e.clientX - rect.left) / state.scale;
     const y = (e.clientY - rect.top) / state.scale;
 
+    // 裁剪模式下的处理
+    if (state.cropMode) {
+        handleCropMouseDown(x, y);
+        return;
+    }
+
     // 检查是否点击了控制点
     if (state.selectedItem) {
         const handle = getHandleAtPoint(state.selectedItem, x, y);
@@ -427,6 +440,12 @@ function handleCanvasMouseMove(e) {
     const x = (e.clientX - rect.left) / state.scale;
     const y = (e.clientY - rect.top) / state.scale;
 
+    // 裁剪模式下的处理
+    if (state.cropMode) {
+        handleCropMouseMove(x, y);
+        return;
+    }
+
     if (state.dragState) {
         if (state.dragState.type === 'move') {
             // 移动元素
@@ -446,6 +465,7 @@ function handleCanvasMouseMove(e) {
 
 function handleCanvasMouseUp(e) {
     state.dragState = null;
+    state.cropDragState = null;
 }
 
 function handleCanvasContextMenu(e) {
@@ -636,9 +656,14 @@ function render() {
         ctx.restore();
     });
 
-    // 绘制选中元素的控制点
-    if (state.selectedItem) {
+    // 绘制选中元素的控制点（非裁剪模式）
+    if (state.selectedItem && !state.cropMode) {
         drawHandles(state.selectedItem);
+    }
+
+    // 绘制裁剪覆盖层（裁剪模式）
+    if (state.cropMode && state.cropTarget) {
+        drawCropOverlay(ctx);
     }
 }
 
@@ -737,15 +762,29 @@ async function exportPDF() {
         canvas_width: state.canvasWidth,
         canvas_height: state.canvasHeight,
         background_color: state.backgroundColor,
-        items: state.canvasItems.map(item => ({
-            file_id: item.fileId,
-            page_num: item.pageNum,
-            x: item.x,
-            y: item.y,
-            width: item.width,
-            height: item.height,
-            rotation: item.rotation
-        }))
+        items: state.canvasItems.map(item => {
+            const exportItem = {
+                file_id: item.fileId,
+                page_num: item.pageNum,
+                x: item.x,
+                y: item.y,
+                width: item.width,
+                height: item.height,
+                rotation: item.rotation
+            };
+
+            // 如果有裁剪数据，添加 clip 参数
+            if (item.crop) {
+                exportItem.clip = [
+                    item.crop.x,
+                    item.crop.y,
+                    item.crop.x + item.crop.width,
+                    item.crop.y + item.crop.height
+                ];
+            }
+
+            return exportItem;
+        })
     };
 
     try {
@@ -776,4 +815,328 @@ async function exportPDF() {
 
 function updateItemCount() {
     document.getElementById('itemCount').textContent = `已添加 ${state.canvasItems.length} 个页面`;
+}
+
+// ==================== 裁剪模式 ====================
+function initCropMode() {
+    const cropBtn = document.getElementById('cropBtn');
+    const cropApplyBtn = document.getElementById('cropApplyBtn');
+    const cropCancelBtn = document.getElementById('cropCancelBtn');
+
+    cropBtn.addEventListener('click', enterCropMode);
+    cropApplyBtn.addEventListener('click', () => exitCropMode(true));
+    cropCancelBtn.addEventListener('click', () => exitCropMode(false));
+}
+
+function enterCropMode() {
+    if (!state.selectedItem) {
+        alert('请先选择一个页面');
+        return;
+    }
+
+    const item = state.selectedItem;
+
+    // 进入裁剪模式
+    state.cropMode = true;
+    state.cropTarget = item;
+
+    // 获取原始页面尺寸
+    const fileInfo = state.uploadedFiles.get(item.fileId);
+    const page = fileInfo.pages[item.pageNum];
+    state.originalPageSize = {
+        width: page.width,
+        height: page.height
+    };
+
+    // 初始化裁剪矩形（如果已有裁剪数据则使用，否则使用全尺寸）
+    if (item.crop) {
+        // 已有裁剪数据，转换为画布坐标
+        const scaleX = item.width / item.crop.width;
+        const scaleY = item.height / item.crop.height;
+        state.cropRect = {
+            x: 0,
+            y: 0,
+            width: item.width,
+            height: item.height
+        };
+    } else {
+        // 无裁剪数据，使用全尺寸
+        state.cropRect = {
+            x: 0,
+            y: 0,
+            width: item.width,
+            height: item.height
+        };
+    }
+
+    // 显示裁剪操作栏
+    document.getElementById('cropActionBar').classList.add('active');
+    document.getElementById('cropBtn').classList.add('active');
+    document.querySelector('.canvas-section').classList.add('crop-mode');
+
+    render();
+}
+
+function exitCropMode(apply) {
+    if (apply && state.cropTarget && state.cropRect) {
+        applyCrop();
+    }
+
+    // 重置裁剪状态
+    state.cropMode = false;
+    state.cropTarget = null;
+    state.cropRect = null;
+    state.cropDragState = null;
+    state.originalPageSize = null;
+
+    // 隐藏裁剪操作栏
+    document.getElementById('cropActionBar').classList.remove('active');
+    document.getElementById('cropBtn').classList.remove('active');
+    document.querySelector('.canvas-section').classList.remove('crop-mode');
+
+    render();
+}
+
+async function applyCrop() {
+    const item = state.cropTarget;
+    const cropRect = state.cropRect;
+
+    // 计算裁剪区域在源页面坐标系中的位置
+    const fileInfo = state.uploadedFiles.get(item.fileId);
+    const page = fileInfo.pages[item.pageNum];
+
+    // 计算缩放比例
+    const scaleX = page.width / item.width;
+    const scaleY = page.height / item.height;
+
+    // 转换裁剪矩形到源页面坐标
+    const sourceCrop = {
+        x: cropRect.x * scaleX,
+        y: cropRect.y * scaleY,
+        width: cropRect.width * scaleX,
+        height: cropRect.height * scaleY
+    };
+
+    // 存储裁剪数据
+    item.crop = sourceCrop;
+
+    // 更新宽高比为裁剪后的比例
+    item.aspectRatio = sourceCrop.width / sourceCrop.height;
+
+    // 加载裁剪后的缩略图
+    const croppedThumbUrl = `/api/thumbnail/${item.fileId}/${item.pageNum}?crop=${sourceCrop.x},${sourceCrop.y},${sourceCrop.width},${sourceCrop.height}`;
+
+    try {
+        item.image = await loadImage(croppedThumbUrl);
+
+        // 调整元素尺寸以保持宽高比
+        const newHeight = item.width / item.aspectRatio;
+        item.height = newHeight;
+
+        render();
+    } catch (error) {
+        console.error('加载裁剪缩略图失败:', error);
+        alert('裁剪失败，请重试');
+    }
+}
+
+// ==================== 裁剪覆盖层渲染 ====================
+function drawCropOverlay(ctx) {
+    const item = state.cropTarget;
+    const cropRect = state.cropRect;
+
+    // 保存当前状态
+    ctx.save();
+
+    // 绘制半透明遮罩覆盖整个画布
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(0, 0, state.canvasWidth, state.canvasHeight);
+
+    // 清除裁剪区域（使其可见）
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillRect(
+        item.x + cropRect.x,
+        item.y + cropRect.y,
+        cropRect.width,
+        cropRect.height
+    );
+
+    // 恢复合成模式
+    ctx.globalCompositeOperation = 'source-over';
+
+    // 绘制裁剪矩形边框
+    ctx.strokeStyle = '#2196F3';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.strokeRect(
+        item.x + cropRect.x,
+        item.y + cropRect.y,
+        cropRect.width,
+        cropRect.height
+    );
+    ctx.setLineDash([]);
+
+    // 恢复状态
+    ctx.restore();
+
+    // 绘制裁剪控制点
+    drawCropHandles(ctx);
+}
+
+function drawCropHandles(ctx) {
+    const item = state.cropTarget;
+    const cropRect = state.cropRect;
+
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = '#2196F3';
+    ctx.lineWidth = 2;
+
+    HANDLES.forEach(handle => {
+        const x = item.x + cropRect.x + cropRect.width * handle.x;
+        const y = item.y + cropRect.y + cropRect.height * handle.y;
+
+        // 绘制正方形控制点
+        ctx.fillRect(x - 5, y - 5, 10, 10);
+        ctx.strokeRect(x - 5, y - 5, 10, 10);
+    });
+}
+
+// ==================== 裁剪交互 ====================
+function handleCropMouseDown(x, y) {
+    const item = state.cropTarget;
+    const cropRect = state.cropRect;
+
+    // 检查是否点击了裁剪控制点
+    const handle = getCropHandleAtPoint(x, y);
+    if (handle) {
+        state.cropDragState = {
+            type: 'resize',
+            handle: handle,
+            startX: x,
+            startY: y,
+            originalRect: { ...cropRect }
+        };
+        return;
+    }
+
+    // 检查是否点击在裁剪矩形内部
+    if (isPointInCropRect(x, y)) {
+        state.cropDragState = {
+            type: 'move',
+            startX: x,
+            startY: y,
+            originalRect: { ...cropRect }
+        };
+        return;
+    }
+}
+
+function handleCropMouseMove(x, y) {
+    if (!state.cropDragState) return;
+
+    if (state.cropDragState.type === 'move') {
+        moveCropRect(x, y);
+    } else if (state.cropDragState.type === 'resize') {
+        resizeCropRect(x, y);
+    }
+
+    render();
+}
+
+function getCropHandleAtPoint(x, y) {
+    const item = state.cropTarget;
+    const cropRect = state.cropRect;
+
+    for (const handle of HANDLES) {
+        const hx = item.x + cropRect.x + cropRect.width * handle.x;
+        const hy = item.y + cropRect.y + cropRect.height * handle.y;
+
+        const distance = Math.sqrt((x - hx) ** 2 + (y - hy) ** 2);
+        if (distance <= 10) {
+            return handle;
+        }
+    }
+    return null;
+}
+
+function isPointInCropRect(x, y) {
+    const item = state.cropTarget;
+    const cropRect = state.cropRect;
+
+    return x >= item.x + cropRect.x &&
+           x <= item.x + cropRect.x + cropRect.width &&
+           y >= item.y + cropRect.y &&
+           y <= item.y + cropRect.y + cropRect.height;
+}
+
+function moveCropRect(x, y) {
+    const { startX, startY, originalRect } = state.cropDragState;
+    const item = state.cropTarget;
+
+    const dx = x - startX;
+    const dy = y - startY;
+
+    // 计算新位置
+    let newX = originalRect.x + dx;
+    let newY = originalRect.y + dy;
+
+    // 限制在元素边界内
+    newX = Math.max(0, Math.min(newX, item.width - originalRect.width));
+    newY = Math.max(0, Math.min(newY, item.height - originalRect.height));
+
+    state.cropRect.x = newX;
+    state.cropRect.y = newY;
+}
+
+function resizeCropRect(x, y) {
+    const { handle, startX, startY, originalRect } = state.cropDragState;
+    const item = state.cropTarget;
+
+    const dx = x - startX;
+    const dy = y - startY;
+
+    const newRect = { ...originalRect };
+
+    // 根据控制点调整裁剪矩形
+    switch (handle.name) {
+        case 'nw':
+            newRect.x = Math.max(0, originalRect.x + dx);
+            newRect.y = Math.max(0, originalRect.y + dy);
+            newRect.width = originalRect.width - (newRect.x - originalRect.x);
+            newRect.height = originalRect.height - (newRect.y - originalRect.y);
+            break;
+        case 'ne':
+            newRect.y = Math.max(0, originalRect.y + dy);
+            newRect.width = Math.min(item.width - originalRect.x, originalRect.width + dx);
+            newRect.height = originalRect.height - (newRect.y - originalRect.y);
+            break;
+        case 'sw':
+            newRect.x = Math.max(0, originalRect.x + dx);
+            newRect.width = originalRect.width - (newRect.x - originalRect.x);
+            newRect.height = Math.min(item.height - originalRect.y, originalRect.height + dy);
+            break;
+        case 'se':
+            newRect.width = Math.min(item.width - originalRect.x, originalRect.width + dx);
+            newRect.height = Math.min(item.height - originalRect.y, originalRect.height + dy);
+            break;
+        case 'n':
+            newRect.y = Math.max(0, originalRect.y + dy);
+            newRect.height = originalRect.height - (newRect.y - originalRect.y);
+            break;
+        case 's':
+            newRect.height = Math.min(item.height - originalRect.y, originalRect.height + dy);
+            break;
+        case 'w':
+            newRect.x = Math.max(0, originalRect.x + dx);
+            newRect.width = originalRect.width - (newRect.x - originalRect.x);
+            break;
+        case 'e':
+            newRect.width = Math.min(item.width - originalRect.x, originalRect.width + dx);
+            break;
+    }
+
+    // 确保最小尺寸
+    if (newRect.width >= 20 && newRect.height >= 20) {
+        state.cropRect = newRect;
+    }
 }

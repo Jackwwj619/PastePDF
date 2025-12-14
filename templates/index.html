@@ -11,6 +11,11 @@
         <!-- 顶部工具栏 -->
         <header class="toolbar">
             <h1 class="logo">PastePDF</h1>
+            <div class="toolbar-menu">
+                <button id="cropBtn" class="btn btn-tool" title="裁剪选中的页面">
+                    <span class="icon">✂️</span> 裁剪
+                </button>
+            </div>
             <div class="toolbar-actions">
                 <button id="clearBtn" class="btn btn-secondary">清空</button>
                 <button id="exportBtn" class="btn btn-primary">导出PDF</button>
@@ -86,6 +91,12 @@
             <div class="menu-divider"></div>
             <div class="menu-item" data-action="rotate">旋转 90°</div>
             <div class="menu-item" data-action="delete">删除</div>
+        </div>
+
+        <!-- 裁剪操作栏 -->
+        <div id="cropActionBar" class="crop-action-bar">
+            <button id="cropApplyBtn" class="btn-apply">应用</button>
+            <button id="cropCancelBtn" class="btn-cancel">取消</button>
         </div>
     </div>
 

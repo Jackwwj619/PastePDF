@@ -363,3 +363,95 @@ body {
 ::-webkit-scrollbar-thumb:hover {
     background: #a1a1a1;
 }
+
+/* ==================== 裁剪模式样式 ==================== */
+
+/* 工具栏菜单 */
+.toolbar-menu {
+    display: flex;
+    gap: 10px;
+    margin-left: 20px;
+}
+
+.btn-tool {
+    padding: 8px 16px;
+    background: #f5f5f5;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.2s;
+}
+
+.btn-tool:hover {
+    background: #e0e0e0;
+}
+
+.btn-tool.active {
+    background: #2196F3;
+    color: white;
+    border-color: #2196F3;
+}
+
+.btn-tool .icon {
+    font-size: 16px;
+}
+
+/* 裁剪操作栏 */
+.crop-action-bar {
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    display: none;
+    gap: 12px;
+    z-index: 1000;
+}
+
+.crop-action-bar.active {
+    display: flex;
+}
+
+.crop-action-bar button {
+    padding: 10px 24px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.crop-action-bar .btn-apply {
+    background: #4CAF50;
+    color: white;
+}
+
+.crop-action-bar .btn-apply:hover {
+    background: #45a049;
+}
+
+.crop-action-bar .btn-cancel {
+    background: #f44336;
+    color: white;
+}
+
+.crop-action-bar .btn-cancel:hover {
+    background: #da190b;
+}
+
+/* 裁剪模式光标 */
+.canvas-section.crop-mode {
+    cursor: crosshair;
+}
+
+.canvas-section.crop-mode.crop-move {
+    cursor: move;
+}

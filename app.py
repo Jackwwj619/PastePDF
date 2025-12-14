@@ -100,13 +100,23 @@ def upload_file():
 
 @app.route('/api/thumbnail/<file_id>/<int:page_num>')
 def get_thumbnail(file_id, page_num):
-    """获取页面缩略图（固定宽度，保持宽高比）"""
+    """获取页面缩略图（固定宽度，保持宽高比，支持裁剪）"""
     if file_id not in uploaded_files:
         return jsonify({'error': '文件不存在'}), 404
 
     file_info = uploaded_files[file_id]
     # 固定缩略图宽度为 120px，高度按比例计算
     target_width = float(request.args.get('width', 120))
+
+    # 解析裁剪参数（格式：x,y,width,height）
+    crop_param = request.args.get('crop')
+    crop_rect = None
+    if crop_param:
+        try:
+            x, y, w, h = map(float, crop_param.split(','))
+            crop_rect = fitz.Rect(x, y, x + w, y + h)
+        except:
+            pass  # 忽略无效的裁剪参数
 
     try:
         doc = fitz.open(file_info['path'])
@@ -116,14 +126,24 @@ def get_thumbnail(file_id, page_num):
             return jsonify({'error': '页码无效'}), 400
 
         page = doc[page_num]
-        rect = page.rect
+
+        # 确定要渲染的矩形区域
+        if crop_rect:
+            # 验证裁剪矩形在页面范围内
+            page_rect = page.rect
+            crop_rect = crop_rect & page_rect  # 取交集
+            if crop_rect.is_empty:
+                crop_rect = page_rect
+            render_rect = crop_rect
+        else:
+            render_rect = page.rect
 
         # 计算缩放比例以达到目标宽度
-        scale = target_width / rect.width
+        scale = target_width / render_rect.width
 
-        # 渲染为图片（保持宽高比）
+        # 渲染为图片（使用 clip 参数裁剪）
         mat = fitz.Matrix(scale, scale)
-        pix = page.get_pixmap(matrix=mat)
+        pix = page.get_pixmap(matrix=mat, clip=crop_rect)
 
         # 转换为 PNG
         img_data = pix.tobytes("png")
@@ -193,6 +213,7 @@ def export_pdf():
             width = item.get('width', 100)
             height = item.get('height', 100)
             rotation = item.get('rotation', 0)
+            clip_data = item.get('clip')  # 裁剪数据 [x0, y0, x1, y1]
 
             try:
                 src_doc = fitz.open(file_info['path'])
@@ -204,12 +225,19 @@ def export_pdf():
                 # 定义目标区域
                 dest_rect = fitz.Rect(x, y, x + width, y + height)
 
-                # 使用 show_pdf_page 嵌入 PDF 页面（保持矢量质量）
+                # 定义裁剪矩形（如果有裁剪数据）
+                clip_rect = None
+                if clip_data and len(clip_data) == 4:
+                    clip_rect = fitz.Rect(clip_data[0], clip_data[1],
+                                         clip_data[2], clip_data[3])
+
+                # 使用 show_pdf_page 嵌入 PDF 页面（保持矢量质量，支持裁剪）
                 new_page.show_pdf_page(
                     dest_rect,
                     src_doc,
                     page_num,
-                    rotate=rotation
+                    rotate=rotation,
+                    clip=clip_rect  # 关键：使用 clip 参数实现裁剪
                 )
 
                 src_doc.close()
