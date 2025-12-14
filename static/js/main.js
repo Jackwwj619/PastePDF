@@ -370,7 +370,8 @@ function addItemToCanvas(fileId, pageNum, x, y, width, height, image) {
         width,
         height,
         rotation: 0,
-        image
+        image,
+        aspectRatio: width / height  // 保存原始宽高比
     };
 
     state.canvasItems.push(item);
@@ -513,81 +514,88 @@ function resizeItem(dragState, x, y, shiftKey) {
     const dx = x - startX;
     const dy = y - startY;
 
-    const aspectRatio = originalRect.width / originalRect.height;
+    // 使用元素保存的原始宽高比
+    const aspectRatio = item.aspectRatio;
 
-    // 根据控制点调整大小
+    // 所有缩放操作都保持宽高比（移除了 shiftKey 的判断）
     switch (handle.name) {
         case 'nw':
-            if (shiftKey) {
-                const newWidth = originalRect.width - dx;
-                const newHeight = newWidth / aspectRatio;
-                item.x = originalRect.x + originalRect.width - newWidth;
-                item.y = originalRect.y + originalRect.height - newHeight;
-                item.width = newWidth;
-                item.height = newHeight;
-            } else {
-                item.x = originalRect.x + dx;
-                item.y = originalRect.y + dy;
-                item.width = originalRect.width - dx;
-                item.height = originalRect.height - dy;
-            }
+            // 左上角：根据宽度变化计算
+            const newWidth_nw = originalRect.width - dx;
+            const newHeight_nw = newWidth_nw / aspectRatio;
+            item.x = originalRect.x + originalRect.width - newWidth_nw;
+            item.y = originalRect.y + originalRect.height - newHeight_nw;
+            item.width = newWidth_nw;
+            item.height = newHeight_nw;
             break;
         case 'ne':
-            if (shiftKey) {
-                const newWidth = originalRect.width + dx;
-                const newHeight = newWidth / aspectRatio;
-                item.y = originalRect.y + originalRect.height - newHeight;
-                item.width = newWidth;
-                item.height = newHeight;
-            } else {
-                item.y = originalRect.y + dy;
-                item.width = originalRect.width + dx;
-                item.height = originalRect.height - dy;
-            }
+            // 右上角：根据宽度变化计算
+            const newWidth_ne = originalRect.width + dx;
+            const newHeight_ne = newWidth_ne / aspectRatio;
+            item.y = originalRect.y + originalRect.height - newHeight_ne;
+            item.width = newWidth_ne;
+            item.height = newHeight_ne;
             break;
         case 'sw':
-            if (shiftKey) {
-                const newWidth = originalRect.width - dx;
-                const newHeight = newWidth / aspectRatio;
-                item.x = originalRect.x + originalRect.width - newWidth;
-                item.width = newWidth;
-                item.height = newHeight;
-            } else {
-                item.x = originalRect.x + dx;
-                item.width = originalRect.width - dx;
-                item.height = originalRect.height + dy;
-            }
+            // 左下角：根据宽度变化计算
+            const newWidth_sw = originalRect.width - dx;
+            const newHeight_sw = newWidth_sw / aspectRatio;
+            item.x = originalRect.x + originalRect.width - newWidth_sw;
+            item.width = newWidth_sw;
+            item.height = newHeight_sw;
             break;
         case 'se':
-            if (shiftKey) {
-                const newWidth = originalRect.width + dx;
-                const newHeight = newWidth / aspectRatio;
-                item.width = newWidth;
-                item.height = newHeight;
-            } else {
-                item.width = originalRect.width + dx;
-                item.height = originalRect.height + dy;
-            }
+            // 右下角：根据宽度变化计算
+            const newWidth_se = originalRect.width + dx;
+            const newHeight_se = newWidth_se / aspectRatio;
+            item.width = newWidth_se;
+            item.height = newHeight_se;
             break;
         case 'n':
+            // 上边：根据高度变化计算宽度
+            const newHeight_n = originalRect.height - dy;
+            const newWidth_n = newHeight_n * aspectRatio;
             item.y = originalRect.y + dy;
-            item.height = originalRect.height - dy;
+            item.x = originalRect.x + (originalRect.width - newWidth_n) / 2;
+            item.width = newWidth_n;
+            item.height = newHeight_n;
             break;
         case 's':
-            item.height = originalRect.height + dy;
+            // 下边：根据高度变化计算宽度
+            const newHeight_s = originalRect.height + dy;
+            const newWidth_s = newHeight_s * aspectRatio;
+            item.x = originalRect.x + (originalRect.width - newWidth_s) / 2;
+            item.width = newWidth_s;
+            item.height = newHeight_s;
             break;
         case 'w':
+            // 左边：根据宽度变化计算高度
+            const newWidth_w = originalRect.width - dx;
+            const newHeight_w = newWidth_w / aspectRatio;
             item.x = originalRect.x + dx;
-            item.width = originalRect.width - dx;
+            item.y = originalRect.y + (originalRect.height - newHeight_w) / 2;
+            item.width = newWidth_w;
+            item.height = newHeight_w;
             break;
         case 'e':
-            item.width = originalRect.width + dx;
+            // 右边：根据宽度变化计算高度
+            const newWidth_e = originalRect.width + dx;
+            const newHeight_e = newWidth_e / aspectRatio;
+            item.y = originalRect.y + (originalRect.height - newHeight_e) / 2;
+            item.width = newWidth_e;
+            item.height = newHeight_e;
             break;
     }
 
     // 确保最小尺寸
-    if (item.width < 20) item.width = 20;
-    if (item.height < 20) item.height = 20;
+    if (item.width < 20) {
+        item.width = 20;
+        item.height = 20 / aspectRatio;
+    }
+    if (item.height < 20) {
+        item.height = 20;
+        item.width = 20 * aspectRatio;
+    }
 }
 
 // ==================== 渲染 ====================

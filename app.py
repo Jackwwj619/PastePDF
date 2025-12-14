@@ -100,12 +100,13 @@ def upload_file():
 
 @app.route('/api/thumbnail/<file_id>/<int:page_num>')
 def get_thumbnail(file_id, page_num):
-    """获取页面缩略图"""
+    """获取页面缩略图（固定宽度，保持宽高比）"""
     if file_id not in uploaded_files:
         return jsonify({'error': '文件不存在'}), 404
 
     file_info = uploaded_files[file_id]
-    scale = float(request.args.get('scale', 1.0))
+    # 固定缩略图宽度为 120px，高度按比例计算
+    target_width = float(request.args.get('width', 120))
 
     try:
         doc = fitz.open(file_info['path'])
@@ -115,8 +116,12 @@ def get_thumbnail(file_id, page_num):
             return jsonify({'error': '页码无效'}), 400
 
         page = doc[page_num]
+        rect = page.rect
 
-        # 渲染为图片
+        # 计算缩放比例以达到目标宽度
+        scale = target_width / rect.width
+
+        # 渲染为图片（保持宽高比）
         mat = fitz.Matrix(scale, scale)
         pix = page.get_pixmap(matrix=mat)
 
