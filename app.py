@@ -150,6 +150,12 @@ def export_pdf():
     if not items:
         return jsonify({'error': '没有要导出的内容'}), 400
 
+    # 调试：打印接收到的数据
+    print(f"\n=== 导出请求 ===")
+    print(f"画布尺寸: {canvas_width} x {canvas_height}")
+    for i, item in enumerate(items):
+        print(f"元素 {i+1}: 位置({item.get('x')}, {item.get('y')}), 尺寸({item.get('width')} x {item.get('height')}), 旋转{item.get('rotation')}°")
+
     try:
         # 创建新文档
         new_doc = fitz.open()

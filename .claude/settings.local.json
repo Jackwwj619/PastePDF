@@ -24,7 +24,8 @@
       "mcp__tavily-remote-mcp__tavily_search",
       "mcp__tavily-remote-mcp__tavily_extract",
       "Bash(conda activate:*)",
-      "Bash(conda env:*)"
+      "Bash(conda env:*)",
+      "Bash(\"E:\\ProgramData\\miniconda3\\envs\\misc\\python.exe\":*)"
     ],
     "deny": [],
     "ask": [
