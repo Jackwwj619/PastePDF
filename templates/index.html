@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PastePDF - PDF 拼接工具</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- 顶部工具栏 -->
+        <header class="toolbar">
+            <h1 class="logo">PastePDF</h1>
+            <div class="toolbar-actions">
+                <button id="clearBtn" class="btn btn-secondary">清空</button>
+                <button id="exportBtn" class="btn btn-primary">导出PDF</button>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <!-- 左侧面板 -->
+            <aside class="sidebar">
+                <!-- 上传区域 -->
+                <div class="upload-section">
+                    <div id="uploadArea" class="upload-area">
+                        <div class="upload-icon">📄</div>
+                        <p>点击或拖拽上传 PDF</p>
+                        <input type="file" id="fileInput" accept=".pdf" multiple hidden>
+                    </div>
+                </div>
+
+                <!-- 文件列表 -->
+                <div class="file-list-section">
+                    <h3>已上传文件</h3>
+                    <div id="fileList" class="file-list"></div>
+                </div>
+            </aside>
+
+            <!-- 右侧画布区域 -->
+            <main class="canvas-section">
+                <div class="canvas-wrapper">
+                    <canvas id="mainCanvas"></canvas>
+                </div>
+            </main>
+        </div>
+
+        <!-- 底部设置栏 -->
+        <footer class="settings-bar">
+            <div class="setting-group">
+                <label>画布:</label>
+                <select id="presetSize">
+                    <option value="a4">A4</option>
+                    <option value="a3">A3</option>
+                    <option value="letter">Letter</option>
+                    <option value="custom">自定义</option>
+                </select>
+            </div>
+            <div class="setting-group">
+                <label>宽:</label>
+                <input type="number" id="canvasWidth" value="595" min="100" max="5000">
+                <span>pt</span>
+            </div>
+            <div class="setting-group">
+                <label>高:</label>
+                <input type="number" id="canvasHeight" value="842" min="100" max="5000">
+                <span>pt</span>
+            </div>
+            <div class="setting-group">
+                <button id="orientationBtn" class="btn btn-small">横向</button>
+            </div>
+            <div class="setting-group">
+                <label>背景:</label>
+                <input type="color" id="bgColor" value="#ffffff">
+            </div>
+            <div class="setting-group status">
+                <span id="itemCount">已添加 0 个页面</span>
+            </div>
+        </footer>
+
+        <!-- 右键菜单 -->
+        <div id="contextMenu" class="context-menu" style="display: none;">
+            <div class="menu-item" data-action="bringToFront">置于顶层</div>
+            <div class="menu-item" data-action="bringForward">上移一层</div>
+            <div class="menu-item" data-action="sendBackward">下移一层</div>
+            <div class="menu-item" data-action="sendToBack">置于底层</div>
+            <div class="menu-divider"></div>
+            <div class="menu-item" data-action="rotate">旋转 90°</div>
+            <div class="menu-item" data-action="delete">删除</div>
+        </div>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(dir:*)",
+      "Bash(where:*)",
+      "Bash(find:*)",
+      "Bash(findstr:*)",
+      "Bash(grep:*)",
+      "Bash(pip show:*)",
+      "WebSearch",
+      "Bash(accelerate config:*)",
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "WebFetch(domain:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(python:*)",
+      "Bash(python -m py_compile:*)",
+      "WebFetch(domain:arxiv.org)",
+      "mcp__tavily-remote-mcp__tavily_search",
+      "WebFetch(domain:howiehwong.github.io)",
+      "mcp__tavily-remote-mcp__tavily_search",
+      "mcp__tavily-remote-mcp__tavily_extract",
+      "Bash(conda activate:*)",
+      "Bash(conda env:*)"
+    ],
+    "deny": [],
+    "ask": [
+      "Bash(pip install:*)",
+      "Bash(pip uninstall:*)",
+      "Bash(rm:*)"
+    ]
+  }
+}
