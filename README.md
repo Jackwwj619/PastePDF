@@ -2,8 +2,9 @@
 
 A browser-based PDF page merging tool. Run locally and access via browser to visually arrange and merge multiple PDF pages into a single page using drag-and-drop.
 
-![image-20251214201202245](./assets/image-20251214201202245.png)
+![image-20251216213855017](./assets/image-20251216213855017.png)
 
+![image-20251216213902865](./assets/image-20251216213902865.png)
 
 ## Features
 
